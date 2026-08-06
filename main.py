@@ -1,12 +1,16 @@
+from typing import List
 import jwt
 from database import Base, engine, get_db
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from models import DBUser
+from models import DBTask, DBUser
 from schemas import (
     PasswordResetConfirm,
     PasswordResetRequest,
     RefreshTokenRequest,
+    TaskCreate,
+    TaskResponse,
+    TaskUpdate,
     TokenResponse,
     UserCreate,
     UserResponse,
@@ -25,13 +29,13 @@ from security import (
 )
 from sqlalchemy.orm import Session
 
-app = FastAPI(title="LoginSistem sa Tokenima i RBAC-om")
+app = FastAPI(title="LoginSistem sa Tokenima, RBAC-om i Taskovima")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -187,6 +191,81 @@ def deactivate_my_account(
     current_user.is_active = False
     db.commit()
     return {"poruka": "Vaš nalog je uspješno deaktiviran."}
+
+
+# =====================================================================
+#                          TASKS ENDPOINTS
+# =====================================================================
+
+
+@app.get("/tasks", response_model=List[TaskResponse])
+def get_user_tasks(
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+):
+    return db.query(DBTask).filter(DBTask.owner_id == current_user.id).all()
+
+
+@app.post("/tasks", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
+def create_task(
+    task: TaskCreate,
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+):
+    new_task = DBTask(**task.model_dump(), owner_id=current_user.id)
+    db.add(new_task)
+    db.commit()
+    db.refresh(new_task)
+    return new_task
+
+
+@app.patch("/tasks/{task_id}", response_model=TaskResponse)
+def update_task(
+    task_id: int,
+    task_update: TaskUpdate,
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+):
+    db_task = (
+        db.query(DBTask)
+        .filter(DBTask.id == task_id, DBTask.owner_id == current_user.id)
+        .first()
+    )
+
+    if not db_task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task nije pronađen."
+        )
+
+    update_data = task_update.model_dump(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_task, key, value)
+
+    db.commit()
+    db.refresh(db_task)
+    return db_task
+
+
+@app.delete("/tasks/{task_id}")
+def delete_task(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user: DBUser = Depends(get_current_user),
+):
+    db_task = (
+        db.query(DBTask)
+        .filter(DBTask.id == task_id, DBTask.owner_id == current_user.id)
+        .first()
+    )
+
+    if not db_task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Task nije pronađen."
+        )
+
+    db.delete(db_task)
+    db.commit()
+    return {"poruka": "Task je uspješno obrisan."}
 
 
 # =====================================================================

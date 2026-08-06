@@ -1,4 +1,5 @@
 from enum import Enum
+from typing import Optional
 from pydantic import BaseModel, EmailStr
 
 
@@ -9,17 +10,20 @@ class UserRole(str, Enum):
     MODERATOR = "moderator"
 
 
-# Pydantic model za registraciju korisnika
-class UserCreate(BaseModel):
+# Osnovna User šema
+class UserBase(BaseModel):
     email: EmailStr
+
+
+# Pydantic model za registraciju korisnika
+class UserCreate(UserBase):
     password: str
-    role: UserRole = UserRole.USER  # Podrazumijevana rola je "user"
+    role: UserRole = UserRole.USER
 
 
 # Model za prikaz u odgovoru
-class UserResponse(BaseModel):
+class UserResponse(UserBase):
     id: int
-    email: str
     is_active: bool
     role: UserRole
 
@@ -48,3 +52,36 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     reset_token: str
     new_password: str
+
+
+# =====================================================================
+#                          TASKS ŠEME
+# =====================================================================
+
+
+# Bazna šema za taskove
+class TaskBase(BaseModel):
+    title: str
+    description: Optional[str] = None
+
+
+# Šema za slanje podataka pri kreiranju novog taska
+class TaskCreate(TaskBase):
+    pass
+
+
+# Šema za djelomičnu izmjenu taska (npr. promjena statusa ili naslova)
+class TaskUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    is_completed: Optional[bool] = None
+
+
+# Šema za prikaz taska u JSON odgovoru
+class TaskResponse(TaskBase):
+    id: int
+    is_completed: bool
+    owner_id: int  # Usklađeno sa models.py (owner_id umjesto user_id)
+
+    class Config:
+        from_attributes = True

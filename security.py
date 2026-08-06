@@ -22,7 +22,7 @@ ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", 120))
 REFRESH_TOKEN_EXPIRE_SECONDS = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS", 300))
 RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", 15))
 
-# HTTP Bearer šema za Swagger
+# HTTP Bearer šema za Swagger i frontend
 security_scheme = HTTPBearer()
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -109,10 +109,21 @@ def get_current_user(
 # RBAC Provjera uloga (Dependency)
 def require_roles(allowed_roles: List[UserRole]):
     def role_checker(current_user: DBUser = Depends(get_current_user)) -> DBUser:
-        if current_user.role not in allowed_roles:
+        # Pretvaramo uloge u string form format radi pouzdanog poređenja
+        user_role_val = (
+            current_user.role.value
+            if isinstance(current_user.role, UserRole)
+            else str(current_user.role)
+        )
+        allowed_roles_vals = [
+            r.value if isinstance(r, UserRole) else str(r)
+            for r in allowed_roles
+        ]
+
+        if user_role_val not in allowed_roles_vals:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail=f"Nemate privilegije za pristup ove rute. Potrebna rola: {[r.value for r in allowed_roles]}",
+                detail=f"Nemate privilegije za pristup ovoj ruti. Potrebna rola: {allowed_roles_vals}",
             )
         return current_user
 
