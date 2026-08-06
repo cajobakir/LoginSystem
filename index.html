@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="bs">
+<head>
+    <meta charset="UTF-8">
+    <title>FastAPI Auth Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }
+        .card { border: 1px solid #ccc; padding: 20px; border-radius: 8px; max-width: 400px; margin-bottom: 20px; }
+        input { width: 100%; padding: 8px; margin: 8px 0; box-sizing: border-box; }
+        button { background-color: #2b5c8f; color: white; padding: 10px; border: none; width: 100%; cursor: pointer; border-radius: 4px; }
+        button:hover { background-color: #1d4066; }
+        .response-box { background: #f4f4f4; padding: 10px; border-radius: 4px; font-family: monospace; white-space: pre-wrap; word-break: break-all; }
+    </style>
+</head>
+<body>
+
+    <h2>Login i DI Testiranje</h2>
+
+    <!-- FORM ZA LOGIN -->
+    <div class="card">
+        <h3>1. Prijava (Login)</h3>
+        <input type="email" id="email" placeholder="Unesite email" value="test@gmail.com">
+        <input type="password" id="password" placeholder="Unesite lozinku" value="123456">
+        <button onclick="login()">Prijavi se</button>
+    </div>
+
+    <!-- TESTIRANJE ZAŠTIĆENE RUTE -->
+    <div class="card">
+        <h3>2. Zaštićeni Endpoint (/me)</h3>
+        <p>Preuzmi podatke prijavljenog korisnika slanjem Bearer Tokena:</p>
+        <button onclick="getMyProfile()">Dohvati moj profil (/me)</button>
+    </div>
+
+    <!-- ISPIS ODGOVORA SA SERVERA -->
+    <h3>Odgovor sa servera:</h3>
+    <div id="output" class="response-box">Još nema zahtjeva...</div>
+
+    <script>
+        const API_URL = "http://127.0.0.1:8000";
+
+        // Funkcija za Login
+        async function login() {
+            const email = document.getElementById("email").value;
+            const password = document.getElementById("password").value;
+            const output = document.getElementById("output");
+
+            try {
+                const response = await fetch(`${API_URL}/login`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email: email, password: password })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    // Sačuvaj token u pregledniku (localStorage)
+                    localStorage.setItem("access_token", data.access_token);
+                    localStorage.setItem("refresh_token", data.refresh_token);
+
+                    output.innerText = "Uspješna prijava!\nAccess Token je sačuvan u localStorage.\n\n" + JSON.stringify(data, null, 2);
+                } else {
+                    output.innerText = "Greška pri prijavi:\n" + JSON.stringify(data, null, 2);
+                }
+            } catch (err) {
+                output.innerText = "Greška u mrežnoj komunikaciji sa serverom! Provjeri da li je FastAPI pokrenut.";
+            }
+        }
+
+        // Funkcija za slanje tokena na zaštićeni /me endpoint
+        async function getMyProfile() {
+            const output = document.getElementById("output");
+
+            // Uzimamo sačuvani token iz preglednika
+            const token = localStorage.getItem("access_token");
+
+            if (!token) {
+                output.innerText = "Greška: Niste prijavljeni (nema tokena u localStorage)!";
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_URL}/me`, {
+                    method: "GET",
+                    headers: {
+                        "Content-Type": "application/json",
+                        // SLANJE TOKENA U AUTHORIZATION HEADER-U (DI očekuje ovo!)
+                        "Authorization": `Bearer ${token}`
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    output.innerText = "USPJED! Podaci vraćeni sa /me rute pomoću DI-ja:\n\n" + JSON.stringify(data, null, 2);
+                } else {
+                    output.innerText = `Greška (Status ${response.status}):\n` + JSON.stringify(data, null, 2);
+                }
+            } catch (err) {
+                output.innerText = "Greška u mrežnoj komunikaciji sa serverom!";
+            }
+        }
+    </script>
+</body>
+</html>

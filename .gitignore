@@ -1,2 +1,4 @@
-*.html
-*.env
+__pycache__/
+*.pyc
+*.db
+.env
