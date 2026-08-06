@@ -10,6 +10,7 @@ from schemas import (
     TokenResponse,
     UserCreate,
     UserResponse,
+    UserRole,
 )
 from security import (
     ALGORITHM,
@@ -19,11 +20,12 @@ from security import (
     create_reset_token,
     get_current_user,
     hash_password,
+    require_roles,
     verify_password,
 )
 from sqlalchemy.orm import Session
 
-app = FastAPI(title="LoginSistem sa Tokenima")
+app = FastAPI(title="LoginSistem sa Tokenima i RBAC-om")
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,16 +45,18 @@ Base.metadata.create_all(bind=engine)
     status_code=status.HTTP_201_CREATED,
 )
 def register(user_data: UserCreate, db: Session = Depends(get_db)):
-    db_user = (
-        db.query(DBUser).filter(DBUser.email == user_data.email).first()
-    )
+    db_user = db.query(DBUser).filter(DBUser.email == user_data.email).first()
     if db_user:
         raise HTTPException(
             status_code=400, detail="Email je već registrovan."
         )
 
     hashed_pwd = hash_password(user_data.password)
-    new_user = DBUser(email=user_data.email, hashed_password=hashed_pwd)
+    new_user = DBUser(
+        email=user_data.email,
+        hashed_password=hashed_pwd,
+        role=user_data.role,  # Čuva se uloga proslijeđena u zahtjevu
+    )
 
     db.add(new_user)
     db.commit()
@@ -60,7 +64,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     return new_user
 
 
-# Login endpoint (Vraća Access i Refresh Token)
+# Login endpoint
 @app.post("/login", response_model=TokenResponse)
 def login(user_data: UserCreate, db: Session = Depends(get_db)):
     user = db.query(DBUser).filter(DBUser.email == user_data.email).first()
@@ -71,7 +75,6 @@ def login(user_data: UserCreate, db: Session = Depends(get_db)):
             detail="Neispravan email ili lozinka.",
         )
 
-    # Provjera da li je nalog deaktiviran
     if not user.is_active:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -88,12 +91,13 @@ def login(user_data: UserCreate, db: Session = Depends(get_db)):
     }
 
 
+# Profil trenutno prijavljenog korisnika
 @app.get("/me", response_model=UserResponse)
 def get_my_profile(current_user: DBUser = Depends(get_current_user)):
     return current_user
 
 
-# Endpoint za obnavljanje access tokena
+# Refresh token endpoint
 @app.post("/refresh", response_model=dict)
 def refresh_token(request: RefreshTokenRequest):
     try:
@@ -120,7 +124,7 @@ def refresh_token(request: RefreshTokenRequest):
         )
 
 
-# Endpoint za zaboravljenu šifru
+# Forgot password
 @app.post("/forgot-password")
 def forgot_password(
     request: PasswordResetRequest, db: Session = Depends(get_db)
@@ -139,7 +143,7 @@ def forgot_password(
     }
 
 
-# Resetovanje lozinke na osnovu prethodno kreiranog reset tokena
+# Reset password
 @app.post("/reset-password")
 def reset_password(
     data: PasswordResetConfirm, db: Session = Depends(get_db)
@@ -174,7 +178,7 @@ def reset_password(
         raise HTTPException(status_code=400, detail="Nevalidan reset token.")
 
 
-# Endpoint za deaktivaciju sopstvenog naloga
+# Deaktivacija naloga
 @app.patch("/users/me/deactivate")
 def deactivate_my_account(
     db: Session = Depends(get_db),
@@ -183,3 +187,28 @@ def deactivate_my_account(
     current_user.is_active = False
     db.commit()
     return {"poruka": "Vaš nalog je uspješno deaktiviran."}
+
+
+# =====================================================================
+#                          RBAC TEST RUTE
+# =====================================================================
+
+
+# Admin ruta (Samo za ulogu ADMIN)
+@app.get(
+    "/admin/dashboard",
+    dependencies=[Depends(require_roles([UserRole.ADMIN]))],
+)
+def admin_dashboard():
+    return {"poruka": "Dobrodošli na zaštićeni Admin Dashboard!"}
+
+
+# Panel za Moderatore i Admina
+@app.get(
+    "/moderator/panel",
+    dependencies=[
+        Depends(require_roles([UserRole.ADMIN, UserRole.MODERATOR]))
+    ],
+)
+def moderator_panel():
+    return {"poruka": "Dobrodošli u Moderator Panel!"}

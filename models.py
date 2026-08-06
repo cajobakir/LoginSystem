@@ -1,7 +1,9 @@
 from database import Base
-from sqlalchemy import Boolean, Column, Integer, String
+from sqlalchemy import Boolean, Column, Enum as SQLEnum, Integer, String
+from schemas import UserRole
 
-# kreiranje jendostavnog sqlalchemy user modela
+
+# Kreiranje sqlalchemy user modela sa Enum ulogom
 class DBUser(Base):
     __tablename__ = "users"
 
@@ -9,3 +11,4 @@ class DBUser(Base):
     email = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
+    role = Column(SQLEnum(UserRole), default=UserRole.USER, nullable=False)

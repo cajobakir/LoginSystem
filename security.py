@@ -1,23 +1,25 @@
 import os
 from datetime import datetime, timedelta, timezone
+from typing import List
 import jwt
-from dotenv import load_dotenv
-from passlib.context import CryptContext
-from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy.orm import Session
 from database import get_db
+from dotenv import load_dotenv
+from fastapi import Depends, HTTPException, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from models import DBUser
+from passlib.context import CryptContext
+from schemas import UserRole
+from sqlalchemy.orm import Session
 
 # 1. Učitavanje varijabli iz .env fajla
 load_dotenv()
 
-# 2. Čitanje vrijednosti iz okruženja (s fallback rezervnim vrijednostima)
+# 2. Čitanje vrijednosti iz okruženja
 SECRET_KEY = os.getenv("SECRET_KEY", "default_secret_key_if_missing")
 ALGORITHM = os.getenv("ALGORITHM", "HS256")
 
 ACCESS_TOKEN_EXPIRE_SECONDS = int(os.getenv("ACCESS_TOKEN_EXPIRE_SECONDS", 120))
-REFRESH_TOKEN_EXPIRE_SECONDS = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS", 300))## odvojit u helper
+REFRESH_TOKEN_EXPIRE_SECONDS = int(os.getenv("REFRESH_TOKEN_EXPIRE_SECONDS", 300))
 RESET_TOKEN_EXPIRE_MINUTES = int(os.getenv("RESET_TOKEN_EXPIRE_MINUTES", 15))
 
 # HTTP Bearer šema za Swagger
@@ -31,12 +33,12 @@ def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 
-# Verifikacija šifre (provjeravanje hash-a)
+# Verifikacija šifre
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-# Funkcija za kreiranje access tokena (JWT token)
+# Kreiranje access tokena
 def create_access_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(
@@ -46,7 +48,7 @@ def create_access_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-# Funkcija za kreiranje refresh tokena
+# Kreiranje refresh tokena
 def create_refresh_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(
@@ -56,7 +58,7 @@ def create_refresh_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-# Funkcija za kreiranje reset tokena
+# Kreiranje reset tokena
 def create_reset_token(data: dict) -> str:
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(
@@ -66,9 +68,10 @@ def create_reset_token(data: dict) -> str:
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
+# Dohvatanje trenutno ulogovanog korisnika
 def get_current_user(
-        credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
-        db: Session = Depends(get_db)
+    credentials: HTTPAuthorizationCredentials = Depends(security_scheme),
+    db: Session = Depends(get_db),
 ) -> DBUser:
     token = credentials.credentials
     credentials_exception = HTTPException(
@@ -101,3 +104,16 @@ def get_current_user(
         raise credentials_exception
 
     return user
+
+
+# RBAC Provjera uloga (Dependency)
+def require_roles(allowed_roles: List[UserRole]):
+    def role_checker(current_user: DBUser = Depends(get_current_user)) -> DBUser:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Nemate privilegije za pristup ove rute. Potrebna rola: {[r.value for r in allowed_roles]}",
+            )
+        return current_user
+
+    return role_checker

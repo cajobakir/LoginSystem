@@ -1,39 +1,50 @@
+from enum import Enum
 from pydantic import BaseModel, EmailStr
 
 
-# pydantic model za usera i mail
+# Enum definicija za uloge
+class UserRole(str, Enum):
+    ADMIN = "admin"
+    USER = "user"
+    MODERATOR = "moderator"
+
+
+# Pydantic model za registraciju korisnika
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
+    role: UserRole = UserRole.USER  # Podrazumijevana rola je "user"
 
 
-# model za prikaz u odgovoru
+# Model za prikaz u odgovoru
 class UserResponse(BaseModel):
     id: int
     email: str
     is_active: bool
+    role: UserRole
 
     class Config:
         from_attributes = True
 
 
-# modle za vtacanje acces i refresh tokena useru
+# Model za vraćanje access i refresh tokena
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str
     token_type: str = "bearer"
 
 
-#  model za zahtjev refresh tokena
+# Model za zahtjev refresh tokena
 class RefreshTokenRequest(BaseModel):
     refresh_token: str
 
 
-#  model za reset passworda
+# Model za reset passworda
 class PasswordResetRequest(BaseModel):
     email: EmailStr
 
-#model za confirmanje resetovanja passworda
+
+# Model za confirmanje resetovanja passworda
 class PasswordResetConfirm(BaseModel):
     reset_token: str
     new_password: str
